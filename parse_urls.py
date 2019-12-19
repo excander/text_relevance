@@ -3,7 +3,13 @@ from urllib.parse import unquote
 from pprint import pprint as pp
 from collections import defaultdict
 from transliterate import translit, get_available_language_codes
+from bs4 import BeautifulSoup
+import requests
+import random
+import pickle
+import time
 import maru
+import sys
 
 
 urls = [
@@ -24,7 +30,8 @@ def splitter(sent, seps = ['.', '-', '_', '&', '+']):
 	# 	sent = [].append(sent)
 	return sent
 
-def transform_url(url):
+def transform_url(url_id, url):
+	eng_res = []
 	result = []
 	q = urlparse(url).query
 	path = urlparse(url).path
@@ -34,23 +41,58 @@ def transform_url(url):
 			perc_freq = term.count("%")/(len(term)+1)
 			if perc_freq > (0.1):
 				unquoted_q = unquote(term)  #########
-				result += splitter(unquoted_q)
+				# result += splitter(unquoted_q) !
 				# print('unquoted_q:', splitter(unquoted_q))
+			elif '-' in term or '_' in term:
+				tmp_lst = splitter(term)
+				# get_freq_vocab(tmp_lst)
+				filtered = [s for s in tmp_lst if s not in bad_words]
+				eng_res += filtered
+				transited_lst = [translit(s, 'ru') for s in filtered]
+				result += transited_lst 
 			else:
-				result += splitter(term)
+				pass
+				# result += splitter(term) !
 				# print('ELSE Q:', splitter(term))
 	if path:
 		splitted_path = path.split('/')
-		for term in splitted_path:
+		# result += [splitted_path[0]] !
+		for term in splitted_path[1:]:
 			perc_freq = term.count("%")/(len(term)+1)
 			if perc_freq > (0.1):
 				unquoted_path = unquote(term)
-				result += splitter(unquoted_path)
+				# result += splitter(unquoted_path) !
 				# print('unquoted_path:', splitter(unquoted_path))
+			elif '-' in term or '_' in term:
+				tmp_lst = splitter(term)
+				# get_freq_vocab(tmp_lst)
+				filtered = [s for s in tmp_lst if s not in bad_words]
+				eng_res += filtered
+				transited_lst = [translit(s, 'ru') for s in filtered]
+				result += transited_lst 
 			else:
-				result += splitter(term)
+				pass
+				# result += splitter(term)!
 				# print('term:', splitter(term))
-	return result
+	url_for_google = ' '.join(eng_res)
+	if not url_for_google:
+		checked = "не отправлен в гугл"
+	elif len(eng_res) > 10:
+		checked = ''
+		block_size = 7
+		subqueries = [eng_res[i: i + block_size] for i in range(0, len(eng_res), block_size)]
+		for subquery in subqueries:
+			short_for_google = ' '.join(subquery)
+			checked += ' ' + spellcheck_by_google(url_id, short_for_google)
+	else:
+		checked = spellcheck_by_google(url_id, url_for_google)
+		if checked == url_for_google:
+			url_for_google_translit = ' '.join(result)
+			checked = spellcheck_by_google(url_id, url_for_google_translit)
+
+	return checked, eng_res, result
+
+
 
 freq_vocab = defaultdict(int)
 
@@ -58,29 +100,119 @@ def get_freq_vocab(term_list):
 	for term in term_list:
 		freq_vocab[term] += 1
 
-# pp(urls)
-# print()
+
+def spellcheck_by_google(idd, query):
+	user_agent = random.choice(user_agent_list)
+	headers = {'User-Agent': user_agent}
+
+	print('query for google: ', query)
+	# print('headers:', headers)
+	response = requests.get('https://www.google.com/search?q='+query, headers=headers)
+	resp_html = response.text
+	soup = BeautifulSoup(resp_html, 'html.parser')
+	checked = soup.find(id="fprsl")
+	if not checked:
+		checked = soup.find(id="gL9Hy")
+	# if checked:
+	#   checked = checked.find('i')
+	if checked:
+	    checked = checked.text
+	    print('ADDED', idd, file = sys.stderr)
+	    uid_checked_url[idd] = checked
+	else:
+		print("ГУГЛ НЕ ИСПРАВИЛ")
+		checked = query
+
+	# print(query+ "                         >>->>                     "+ checked if checked else "ГУГЛ НЕ ИСПРАВИЛ " + )
+	# print(query+ "                         >>->>                     "+ checked if checked else query, file=sys.stderr)
+
+	time.sleep(random.randint(2,7)/random.randint(1,5))
+	return checked
 
 
-with open('text-relevance-competition-ir-1-ts-fall-2019/urls.numerate.txt') as textfile:
-	for url in urls:
-	# for line in textfile:
-		# line_lst = line.rstrip().split()
-		# url_id, url = line_lst[0], ' '.join(line_lst[1:])
 
-		result = transform_url(url)
+def start():
+	with open('text-relevance-competition-ir-1-ts-fall-2019/urls.numerate.txt') as textfile:
+		# for url in urls:
+		for iteration,line in enumerate(textfile):
+			line_lst = line.rstrip().split()
+			url_id, url = line_lst[0], ' '.join(line_lst[1:])
 
-		print(url, end = '\n\n')
-		print(result, end='\n\n\n\n\n\n\n\n\n')
+			if (int(url_id) in top10_urls):
+				if url_id not in uid_checked_url:
 
-		# get_freq_vocab(result)
+					checked, eng_res, result = transform_url(url_id, url)
 
+					print("iteration", iteration, file=sys.stderr)
+					print('url_id:', url_id)
+					print(url, end = '\n')
+					print(checked)
+					print(checked, file = sys.stderr)
+					print(eng_res)
+					print(result, end='\n\n\n\n\n\n\n\n\n')
+				else:
+					print(url_id, 'exists in uid_checked_url', file = sys.stderr)
+
+
+			# get_freq_vocab(result)
+
+user_agent_list = [
+   #Chrome
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
+    #Firefox
+    'Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)',
+    'Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)',
+    'Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (Windows NT 6.2; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.0; Trident/5.0)',
+    'Mozilla/5.0 (Windows NT 6.3; WOW64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko',
+    'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)',
+    'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)',
+    'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)'
+]
+
+with open('bad_words.pickle', 'rb') as handle:
+	bad_words = pickle.load(handle)
+
+with open('top-10_urls.pickle', 'rb') as handle:
+	top10_urls = pickle.load(handle)
+
+uid_checked_url = dict()
+
+try:
+	with open('uid_checked_url.pickle', 'rb') as handle:
+		uid_checked_url = pickle.load(handle)
+except:
+	print('нет файла')
+
+try:
+	start()
+except:
+	with open('uid_checked_url.pickle', 'wb') as handle:
+		pickle.dump(uid_checked_url, handle)
+		print("сработал ексепт ексепшн, файл дозаписан", file =sys.stderr)
 
 # print(len(freq_vocab))
-# sorted_freq_vocab = sorted([(count, translit(word, 'ru')) for word, count in freq_vocab.items() if len(word) >= 4], reverse=True)
-# pp(sorted_freq_vocab)
+# sorted_freq_vocab = sorted([(count, word) for word, count in freq_vocab.items() if len(word)==3], reverse=True)
+# pp([i[1] for i in sorted_freq_vocab])
+# for i in sorted_freq_vocab:
+# 	print(i[1])
 
 
 
 analyzer = maru.get_analyzer(tagger='crf', lemmatizer='pymorphy')
 # [' '.join([morph.lemma for morph in analyzed[i] if morph.tag.pos != 'PUNCT']) for i, m in enumerate(analyzed)]
+
