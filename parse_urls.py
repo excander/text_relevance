@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 import requests
 import random
 import pickle
+import pandas as pd
 import time
 import maru
 import sys
@@ -121,12 +122,13 @@ def spellcheck_by_google(idd, query):
 	    uid_checked_url[idd] = checked
 	else:
 		print("ГУГЛ НЕ ИСПРАВИЛ")
+		uid_NOT_checked_url[idd] = checked
 		checked = query
 
 	# print(query+ "                         >>->>                     "+ checked if checked else "ГУГЛ НЕ ИСПРАВИЛ " + )
 	# print(query+ "                         >>->>                     "+ checked if checked else query, file=sys.stderr)
 
-	time.sleep(random.randint(2,7)/random.randint(1,5))
+	time.sleep(random.randint(2,3)/random.randint(4,5))
 	return checked
 
 
@@ -138,8 +140,10 @@ def start():
 			line_lst = line.rstrip().split()
 			url_id, url = line_lst[0], ' '.join(line_lst[1:])
 
-			if (int(url_id) in top10_urls):
-				if url_id not in uid_checked_url:
+			if (int(url_id) in top10_urls or int(url_id) in top20_urls):
+				print ('exists in top10_urls or top20_urls')
+			elif (int(url_id) in top40_urls):
+				if url_id not in uid_checked_url and url_id not in uid_NOT_checked_url:
 
 					checked, eng_res, result = transform_url(url_id, url)
 
@@ -151,7 +155,7 @@ def start():
 					print(eng_res)
 					print(result, end='\n\n\n\n\n\n\n\n\n')
 				else:
-					print(url_id, 'exists in uid_checked_url', file = sys.stderr)
+					print(url_id, 'exists in uid_checked_url or in uid_NOT_checked_url', file = sys.stderr)
 
 
 			# get_freq_vocab(result)
@@ -187,14 +191,31 @@ user_agent_list = [
 with open('bad_words.pickle', 'rb') as handle:
 	bad_words = pickle.load(handle)
 
-with open('top-10_urls.pickle', 'rb') as handle:
-	top10_urls = pickle.load(handle)
+# with open('top-10_urls.pickle', 'rb') as handle:
+# 	top10_urls = pickle.load(handle)
+
+# with open('top-20_urls.pickle', 'rb') as handle:
+# 	top20_urls = pickle.load(handle)
+
+# with open('top-40_urls.pickle', 'rb') as handle:
+# 	top40_urls = pickle.load(handle)
+
+url_data = pd.read_csv('clear_url_rang_mail.csv', encoding='utf-8')
+url_data = url_data.drop(['Unnamed: 0'], axis=1)
+
+mail_urls = set(url_data.url_id)
+
+# for i in (top10_urls, top20_urls, top40_urls):
+# 	print(len(i))
 
 uid_checked_url = dict()
+uid_NOT_checked_url = dict()
 
 try:
 	with open('uid_checked_url.pickle', 'rb') as handle:
 		uid_checked_url = pickle.load(handle)
+	with open('uid_NOT_checked_url.pickle', 'rb') as handle:
+		uid_NOT_checked_url = pickle.load(handle)
 except:
 	print('нет файла')
 
@@ -204,15 +225,21 @@ except:
 	with open('uid_checked_url.pickle', 'wb') as handle:
 		pickle.dump(uid_checked_url, handle)
 		print("сработал ексепт ексепшн, файл дозаписан", file =sys.stderr)
+	with open('uid_NOT_checked_url.pickle', 'wb') as handle:
+		pickle.dump(uid_NOT_checked_url, handle)
 
-# print(len(freq_vocab))
-# sorted_freq_vocab = sorted([(count, word) for word, count in freq_vocab.items() if len(word)==3], reverse=True)
-# pp([i[1] for i in sorted_freq_vocab])
-# for i in sorted_freq_vocab:
-# 	print(i[1])
+# # print(len(freq_vocab))
+# # sorted_freq_vocab = sorted([(count, word) for word, count in freq_vocab.items() if len(word)==3], reverse=True)
+# # pp([i[1] for i in sorted_freq_vocab])
+# # for i in sorted_freq_vocab:
+# # 	print(i[1])
 
+with open('uid_checked_url.pickle', 'wb') as handle:
+		pickle.dump(uid_checked_url, handle)
 
+with open('uid_NOT_checked_url.pickle', 'wb') as handle:
+		pickle.dump(uid_NOT_checked_url, handle)
 
-analyzer = maru.get_analyzer(tagger='crf', lemmatizer='pymorphy')
+# analyzer = maru.get_analyzer(tagger='crf', lemmatizer='pymorphy')
 # [' '.join([morph.lemma for morph in analyzed[i] if morph.tag.pos != 'PUNCT']) for i, m in enumerate(analyzed)]
 
